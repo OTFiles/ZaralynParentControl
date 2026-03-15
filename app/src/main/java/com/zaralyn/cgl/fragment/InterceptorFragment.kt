@@ -1,6 +1,7 @@
 package com.zaralyn.cgl.fragment
 
 import android.content.Intent
+import android.net.VpnService
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
@@ -112,7 +113,7 @@ class InterceptorFragment : Fragment() {
                     Toast.makeText(requireContext(), "请输入拦截规则", Toast.LENGTH_SHORT).show()
                     return
                 }
-                val intent = VpnInterceptorService.prepare(requireContext())
+                val intent = VpnService.prepare(requireContext())
                 if (intent != null) {
                     startActivityForResult(intent, 0)
                 } else {
