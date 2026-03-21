@@ -11,7 +11,7 @@ import android.os.ParcelFileDescriptor
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.zaralyn.cgl.MainActivity
-import com.zaralyn.cgl.R
+import com.readboy.cgl.R
 import java.io.FileInputStream
 import java.io.FileOutputStream
 
