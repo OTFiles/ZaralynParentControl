@@ -9,7 +9,7 @@ import android.widget.EditText
 import android.widget.ScrollView
 import android.widget.TextView
 import androidx.fragment.app.Fragment
-import com.zaralyn.cgl.R
+import com.readboy.cgl.R
 import com.zaralyn.cgl.util.SqlInjectionUtil
 
 class SqlExecuteFragment : Fragment() {
