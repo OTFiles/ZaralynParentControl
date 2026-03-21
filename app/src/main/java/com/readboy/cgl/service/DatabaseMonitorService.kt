@@ -11,9 +11,9 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import androidx.core.app.NotificationCompat
-import com.zaralyn.cgl.MainActivity
+import com.readboy.cgl.MainActivity
 import com.readboy.cgl.R
-import com.zaralyn.cgl.util.SqlInjectionUtil
+import com.readboy.cgl.util.SqlInjectionUtil
 
 class DatabaseMonitorService : Service() {
 
