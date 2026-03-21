@@ -4,11 +4,11 @@ plugins {
 }
 
 android {
-    namespace = "com.zaralyn.cgl"
+    namespace = "com.readboy.cgl"
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "com.zaralyn.cgl"
+        applicationId = "com.readboy.cgl"
         minSdk = 21
         targetSdk = 34
         versionCode = 1
@@ -63,4 +63,5 @@ dependencies {
     implementation("androidx.constraintlayout:constraintlayout:2.1.4")
     implementation("androidx.recyclerview:recyclerview:1.3.2")
     implementation("androidx.viewpager2:viewpager2:1.0.0")
+    implementation("androidx.coordinatorlayout:coordinatorlayout:1.2.0")
 }
