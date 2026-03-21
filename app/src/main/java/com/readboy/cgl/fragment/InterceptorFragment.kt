@@ -11,12 +11,12 @@ import android.widget.RadioGroup
 import android.widget.Toast
 import androidx.fragment.app.Fragment
 import com.google.android.material.button.MaterialButton
-import com.google.android.material.materialswitch.MaterialSwitch
+import com.google.android.material.switchmaterial.SwitchMaterial
 import com.google.android.material.radiobutton.MaterialRadioButton
 import com.google.android.material.textfield.TextInputEditText
 import com.google.android.material.textfield.TextInputLayout
-import com.zaralyn.cgl.R
-import com.zaralyn.cgl.service.*
+import com.readboy.cgl.R
+import com.readboy.cgl.service.*
 
 class InterceptorFragment : Fragment() {
 
@@ -30,7 +30,7 @@ class InterceptorFragment : Fragment() {
     private lateinit var rbNotification: MaterialRadioButton
     private lateinit var rbJobScheduler: MaterialRadioButton
     private lateinit var rbWorkManager: MaterialRadioButton
-    private lateinit var filterAppSwitch: MaterialSwitch
+    private lateinit var filterAppSwitch: SwitchMaterial
     private lateinit var filterPackagesInput: TextInputEditText
     private lateinit var paramLayout: TextInputLayout
     private lateinit var paramInput: TextInputEditText
