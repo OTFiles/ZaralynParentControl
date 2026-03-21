@@ -12,7 +12,7 @@ import android.os.Handler
 import android.os.Looper
 import androidx.core.app.NotificationCompat
 import com.zaralyn.cgl.MainActivity
-import com.zaralyn.cgl.R
+import com.readboy.cgl.R
 import com.zaralyn.cgl.util.SqlInjectionUtil
 
 class DatabaseMonitorService : Service() {
