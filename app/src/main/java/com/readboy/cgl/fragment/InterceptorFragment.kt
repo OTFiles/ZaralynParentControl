@@ -8,6 +8,7 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.RadioGroup
+import android.widget.TextView
 import android.widget.Toast
 import androidx.fragment.app.Fragment
 import com.google.android.material.button.MaterialButton
@@ -36,7 +37,7 @@ class InterceptorFragment : Fragment() {
     private lateinit var paramInput: TextInputEditText
     private lateinit var startButton: MaterialButton
     private lateinit var stopButton: MaterialButton
-    private lateinit var statusText: androidx.appcompat.widget.AppCompatTextView
+    private lateinit var statusText: TextView
 
     companion object {
         const val FUNCTION_DELETE = 0
