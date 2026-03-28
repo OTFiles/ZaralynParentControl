@@ -34,41 +34,69 @@ class VpnInterceptorService : VpnService() {
     private var filterPackages: Array<String>? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        intent?.let {
-            val rules = it.getStringExtra(EXTRA_RULES)
-            if (rules != null) {
-                interceptRules = rules.split(",").map { it.trim() }
+        try {
+            intent?.let {
+                val rules = it.getStringExtra(EXTRA_RULES)
+                if (rules != null) {
+                    interceptRules = rules.split(",").map { it.trim() }
+                }
+                keepAliveType = it.getIntExtra(EXTRA_KEEP_ALIVE_TYPE, DatabaseCleanupService.KEEPALIVE_NOTIFICATION)
+                filterPackages = it.getStringArrayExtra(EXTRA_FILTER_PACKAGES)
             }
-            keepAliveType = it.getIntExtra(EXTRA_KEEP_ALIVE_TYPE, DatabaseCleanupService.KEEPALIVE_NOTIFICATION)
-            filterPackages = it.getStringArrayExtra(EXTRA_FILTER_PACKAGES)
+
+            startForeground(NOTIFICATION_ID, createNotification())
+
+            if (!isRunning) {
+                isRunning = true
+                startVpn()
+            }
+
+            return START_STICKY
+        } catch (e: Exception) {
+            Log.e(TAG, "Error in onStartCommand: ${e.message}", e)
+            stopSelf()
+            return START_NOT_STICKY
         }
-
-        startForeground(NOTIFICATION_ID, createNotification())
-
-        if (!isRunning) {
-            isRunning = true
-            startVpn()
-        }
-
-        return START_STICKY
     }
 
     private fun startVpn() {
         try {
+            // 检查VPN权限
+            val intent = VpnService.prepare(this)
+            if (intent != null) {
+                // 没有VPN权限，需要用户授权
+                Log.e(TAG, "VPN permission required")
+                // 发送广播通知UI请求权限
+                val permissionIntent = Intent("com.readboy.cgl.VPN_PERMISSION_REQUIRED")
+                sendBroadcast(permissionIntent)
+                stopSelf()
+                return
+            }
+
+            // 配置VPN
             val builder = Builder()
-                .setSession("CGL VPN")
+                .setSession("CGL VPN Interceptor")
                 .addAddress("10.0.0.2", 32)
                 .addRoute("0.0.0.0", 0)
+                .setMtu(1500)
+
+            // 添加DNS服务器
+            builder.addDnsServer("8.8.8.8")
+            builder.addDnsServer("8.8.4.4")
 
             vpnInterface = builder.establish()
 
-            interceptorThread = Thread {
-                runVpn()
-            }.apply {
-                start()
+            if (vpnInterface != null) {
+                Log.d(TAG, "VPN interface established")
+                interceptorThread = Thread {
+                    runVpn()
+                }.apply {
+                    start()
+                }
+            } else {
+                Log.e(TAG, "Failed to establish VPN interface")
+                stopSelf()
             }
-
-            Log.d(TAG, "VPN started")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to start VPN: ${e.message}", e)
             stopSelf()
@@ -76,29 +104,59 @@ class VpnInterceptorService : VpnService() {
     }
 
     private fun runVpn() {
-        val vpnInput = FileInputStream(vpnInterface?.fileDescriptor)
-        val vpnOutput = FileOutputStream(vpnInterface?.fileDescriptor)
+        try {
+            val vpnInput = FileInputStream(vpnInterface?.fileDescriptor)
+            val vpnOutput = FileOutputStream(vpnInterface?.fileDescriptor)
 
-        val buffer = ByteArray(32767)
+            // 保护VpnInterface不被过早关闭
+            val inputFd = vpnInterface?.fileDescriptor
+            val outputFd = vpnInterface?.fileDescriptor
 
-        while (isRunning) {
-            try {
-                val length = vpnInput.read(buffer)
-                if (length > 0) {
-                    val requestData = String(buffer, 0, length)
+            if (inputFd != null && outputFd != null) {
+                val buffer = ByteArray(32767)
+                var readCount = 0
 
-                    if (shouldIntercept(requestData)) {
-                        Log.d(TAG, "Intercepted request")
-                        val response = buildErrorResponse()
-                        vpnOutput.write(response.toByteArray())
-                    } else {
-                        // 简化实现：透传
-                        vpnOutput.write(buffer, 0, length)
+                while (isRunning) {
+                    try {
+                        val length = vpnInput.read(buffer)
+                        if (length > 0) {
+                            val requestData = String(buffer, 0, length)
+
+                            if (shouldIntercept(requestData)) {
+                                Log.d(TAG, "Intercepted request")
+                                val response = buildErrorResponse()
+                                vpnOutput.write(response.toByteArray())
+                            } else {
+                                // 简化实现：透传数据
+                                vpnOutput.write(buffer, 0, length)
+                            }
+                            readCount++
+                        } else if (length < 0) {
+                            // EOF，重新建立连接
+                            Log.d(TAG, "EOF reached, reconnecting...")
+                            break
+                        }
+                    } catch (e: Exception) {
+                        if (isRunning) {
+                            Log.e(TAG, "VPN data transfer error: ${e.message}", e)
+                            break
+                        }
                     }
                 }
-            } catch (e: Exception) {
-                Log.e(TAG, "VPN error: ${e.message}", e)
-                break
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "VPN run error: ${e.message}", e)
+        } finally {
+            if (isRunning) {
+                // 如果还在运行，尝试重启VPN
+                Thread.sleep(1000)
+                if (isRunning) {
+                    Log.d(TAG, "Restarting VPN...")
+                    vpnInterface?.close()
+                    vpnInterface = null
+                    interceptorThread = null
+                    startVpn()
+                }
             }
         }
     }
@@ -145,13 +203,15 @@ class VpnInterceptorService : VpnService() {
     }
 
     private fun createNotificationChannel() {
-        val channel = NotificationChannel(
-            CHANNEL_ID,
-            "VPN拦截服务",
-            NotificationManager.IMPORTANCE_LOW
-        )
-        val manager = getSystemService(NotificationManager::class.java)
-        manager.createNotificationChannel(channel)
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(
+                CHANNEL_ID,
+                "VPN拦截服务",
+                NotificationManager.IMPORTANCE_LOW
+            )
+            val manager = getSystemService(NotificationManager::class.java)
+            manager.createNotificationChannel(channel)
+        }
     }
 
     private fun createNotification(): Notification {
