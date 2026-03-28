@@ -1,6 +1,9 @@
 package com.readboy.cgl.fragment
 
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.net.VpnService
 import android.os.Build
 import android.os.Bundle
@@ -23,6 +26,12 @@ class InterceptorFragment : Fragment() {
 
     private var currentFunction = FUNCTION_DELETE
     private var currentKeepAlive = KEEPALIVE_NOTIFICATION
+    private var vpnPermissionRequestCode = 100
+
+    // 服务运行状态
+    private var isCleanupRunning = false
+    private var isMonitorRunning = false
+    private var isVpnRunning = false
 
     // UI组件
     private lateinit var btnDatabaseDelete: MaterialButton
@@ -49,6 +58,15 @@ class InterceptorFragment : Fragment() {
         const val KEEPALIVE_WORKMANAGER = 2
     }
 
+    private val vpnPermissionReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action == "com.readboy.cgl.VPN_PERMISSION_REQUIRED") {
+                Toast.makeText(requireContext(), "需要VPN权限，请手动启动VPN", Toast.LENGTH_LONG).show()
+                statusText.text = "VPN需要权限，请手动授权"
+            }
+        }
+    }
+
     override fun onCreateView(
         inflater: LayoutInflater,
         container: ViewGroup?,
@@ -63,6 +81,24 @@ class InterceptorFragment : Fragment() {
         initViews(view)
         setupListeners()
         updateUI()
+        registerReceiver()
+
+        // 检查服务状态
+        checkServicesStatus()
+    }
+
+    override fun onDestroyView() {
+        super.onDestroyView()
+        try {
+            requireContext().unregisterReceiver(vpnPermissionReceiver)
+        } catch (e: Exception) {
+            // 忽略异常
+        }
+    }
+
+    private fun registerReceiver() {
+        val filter = IntentFilter("com.readboy.cgl.VPN_PERMISSION_REQUIRED")
+        requireContext().registerReceiver(vpnPermissionReceiver, filter)
     }
 
     private fun initViews(view: View) {
@@ -146,18 +182,50 @@ class InterceptorFragment : Fragment() {
                 paramLayout.hint = "删除间隔（秒）"
                 paramInput.setText("60")
                 paramInput.inputType = android.text.InputType.TYPE_CLASS_NUMBER
+                updateStatusDisplay()
             }
             FUNCTION_MONITOR -> {
                 paramLayout.hint = "监控间隔（秒）"
                 paramInput.setText("30")
                 paramInput.inputType = android.text.InputType.TYPE_CLASS_NUMBER
+                updateStatusDisplay()
             }
             FUNCTION_VPN -> {
                 paramLayout.hint = "拦截规则（逗号分隔）"
                 paramInput.setText("/api/v1/time/UploadTimeUsage,/api/v1/current_usage/upload")
                 paramInput.inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE
+                updateStatusDisplay()
             }
         }
+    }
+
+    private fun updateStatusDisplay() {
+        val status = StringBuilder()
+        if (isCleanupRunning) status.append("数据库删除运行中 | ")
+        if (isMonitorRunning) status.append("数据库监控运行中 | ")
+        if (isVpnRunning) status.append("VPN拦截运行中")
+
+        if (status.isEmpty()) {
+            statusText.text = "服务未运行"
+        } else {
+            statusText.text = status.toString()
+        }
+    }
+
+    private fun checkServicesStatus() {
+        // 检查各个服务是否在运行
+        val activityManager = requireContext().getSystemService(Context.ACTIVITY_SERVICE) as android.app.ActivityManager
+        val runningServices = activityManager.getRunningServices(Integer.MAX_VALUE)
+
+        for (service in runningServices) {
+            when (service.service.className) {
+                DatabaseCleanupService::class.java.name -> isCleanupRunning = true
+                DatabaseMonitorService::class.java.name -> isMonitorRunning = true
+                VpnInterceptorService::class.java.name -> isVpnRunning = true
+            }
+        }
+
+        updateStatusDisplay()
     }
 
     private fun startService() {
@@ -176,52 +244,82 @@ class InterceptorFragment : Fragment() {
     }
 
     private fun startDatabaseCleanupService(interval: Long, packages: List<String>) {
-        val intent = Intent(requireContext(), DatabaseCleanupService::class.java).apply {
-            putExtra(DatabaseCleanupService.EXTRA_INTERVAL, interval * 1000L)
-            putExtra(DatabaseCleanupService.EXTRA_KEEP_ALIVE_TYPE, currentKeepAlive)
-            putExtra(DatabaseCleanupService.EXTRA_FILTER_PACKAGES, packages.toTypedArray())
+        try {
+            val intent = Intent(requireContext(), DatabaseCleanupService::class.java).apply {
+                putExtra(DatabaseCleanupService.EXTRA_INTERVAL, interval * 1000L)
+                putExtra(DatabaseCleanupService.EXTRA_KEEP_ALIVE_TYPE, currentKeepAlive)
+                putExtra(DatabaseCleanupService.EXTRA_FILTER_PACKAGES, packages.toTypedArray())
+            }
+            requireActivity().startService(intent)
+            isCleanupRunning = true
+            updateStatusDisplay()
+            Toast.makeText(requireContext(), "数据库删除服务已启动", Toast.LENGTH_SHORT).show()
+        } catch (e: Exception) {
+            Toast.makeText(requireContext(), "启动失败: ${e.message}", Toast.LENGTH_SHORT).show()
         }
-        requireActivity().startService(intent)
-        statusText.text = "数据库删除服务已启动"
-        Toast.makeText(requireContext(), "数据库删除服务已启动", Toast.LENGTH_SHORT).show()
     }
 
     private fun startDatabaseMonitorService(interval: Long, packages: List<String>) {
-        val intent = Intent(requireContext(), DatabaseMonitorService::class.java).apply {
-            putExtra(DatabaseMonitorService.EXTRA_INTERVAL, interval * 1000L)
-            putExtra(DatabaseMonitorService.EXTRA_KEEP_ALIVE_TYPE, currentKeepAlive)
-            putExtra(DatabaseMonitorService.EXTRA_FILTER_PACKAGES, packages.toTypedArray())
+        try {
+            val intent = Intent(requireContext(), DatabaseMonitorService::class.java).apply {
+                putExtra(DatabaseMonitorService.EXTRA_INTERVAL, interval * 1000L)
+                putExtra(DatabaseMonitorService.EXTRA_KEEP_ALIVE_TYPE, currentKeepAlive)
+                putExtra(DatabaseMonitorService.EXTRA_FILTER_PACKAGES, packages.toTypedArray())
+            }
+            requireActivity().startService(intent)
+            isMonitorRunning = true
+            updateStatusDisplay()
+            Toast.makeText(requireContext(), "数据库监控服务已启动", Toast.LENGTH_SHORT).show()
+        } catch (e: Exception) {
+            Toast.makeText(requireContext(), "启动失败: ${e.message}", Toast.LENGTH_SHORT).show()
         }
-        requireActivity().startService(intent)
-        statusText.text = "数据库监控服务已启动"
-        Toast.makeText(requireContext(), "数据库监控服务已启动", Toast.LENGTH_SHORT).show()
     }
 
     private fun startVpnInterceptorService() {
-        val rules = paramInput.text.toString()
-        if (rules.isEmpty()) {
-            Toast.makeText(requireContext(), "请输入拦截规则", Toast.LENGTH_SHORT).show()
-            return
-        }
-
-        val packages = if (filterAppSwitch.isChecked) {
-            filterPackagesInput.text.toString().split(",").map { it.trim() }.filter { it.isNotEmpty() }
-        } else {
-            emptyList()
-        }
-
-        val intent = VpnService.prepare(requireContext())
-        if (intent != null) {
-            startActivityForResult(intent, 0)
-        } else {
-            val serviceIntent = Intent(requireContext(), VpnInterceptorService::class.java).apply {
-                putExtra(VpnInterceptorService.EXTRA_RULES, rules)
-                putExtra(VpnInterceptorService.EXTRA_KEEP_ALIVE_TYPE, currentKeepAlive)
-                putExtra(VpnInterceptorService.EXTRA_FILTER_PACKAGES, packages.toTypedArray())
+        try {
+            val rules = paramInput.text.toString()
+            if (rules.isEmpty()) {
+                Toast.makeText(requireContext(), "请输入拦截规则", Toast.LENGTH_SHORT).show()
+                return
             }
-            requireActivity().startService(serviceIntent)
-            statusText.text = "VPN拦截服务已启动"
-            Toast.makeText(requireContext(), "VPN拦截服务已启动", Toast.LENGTH_SHORT).show()
+
+            val packages = if (filterAppSwitch.isChecked) {
+                filterPackagesInput.text.toString().split(",").map { it.trim() }.filter { it.isNotEmpty() }
+            } else {
+                emptyList()
+            }
+
+            // 检查VPN权限
+            val intent = VpnService.prepare(requireContext())
+            if (intent != null) {
+                // 需要请求VPN权限
+                startActivityForResult(intent, vpnPermissionRequestCode)
+            } else {
+                // 已有权限，直接启动
+                val serviceIntent = Intent(requireContext(), VpnInterceptorService::class.java).apply {
+                    putExtra(VpnInterceptorService.EXTRA_RULES, rules)
+                    putExtra(VpnInterceptorService.EXTRA_KEEP_ALIVE_TYPE, currentKeepAlive)
+                    putExtra(VpnInterceptorService.EXTRA_FILTER_PACKAGES, packages.toTypedArray())
+                }
+                requireActivity().startService(serviceIntent)
+                isVpnRunning = true
+                updateStatusDisplay()
+                Toast.makeText(requireContext(), "VPN拦截服务已启动", Toast.LENGTH_SHORT).show()
+            }
+        } catch (e: Exception) {
+            Toast.makeText(requireContext(), "启动失败: ${e.message}", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == vpnPermissionRequestCode) {
+            if (resultCode == android.app.Activity.RESULT_OK) {
+                // 用户授权了VPN权限，重新启动VPN
+                startVpnInterceptorService()
+            } else {
+                Toast.makeText(requireContext(), "VPN权限被拒绝", Toast.LENGTH_SHORT).show()
+            }
         }
     }
 
@@ -230,17 +328,20 @@ class InterceptorFragment : Fragment() {
             FUNCTION_DELETE -> {
                 val intent = Intent(requireContext(), DatabaseCleanupService::class.java)
                 requireActivity().stopService(intent)
-                statusText.text = "数据库删除服务已停止"
+                isCleanupRunning = false
+                updateStatusDisplay()
             }
             FUNCTION_MONITOR -> {
                 val intent = Intent(requireContext(), DatabaseMonitorService::class.java)
                 requireActivity().stopService(intent)
-                statusText.text = "数据库监控服务已停止"
+                isMonitorRunning = false
+                updateStatusDisplay()
             }
             FUNCTION_VPN -> {
                 val intent = Intent(requireContext(), VpnInterceptorService::class.java)
                 requireActivity().stopService(intent)
-                statusText.text = "VPN拦截服务已停止"
+                isVpnRunning = false
+                updateStatusDisplay()
             }
         }
     }
