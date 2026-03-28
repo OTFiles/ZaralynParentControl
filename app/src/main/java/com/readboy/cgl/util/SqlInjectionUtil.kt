@@ -6,10 +6,11 @@ import android.net.Uri
 
 object SqlInjectionUtil {
 
-    private const val AUTHORITY = "com.readboy.parentmanager.provider"
+    private const val AUTHORITY = "com.readboy.parentmanager.AppContentProvider"
 
     fun executeSql(context: Context, sql: String): String {
         return try {
+            // 使用正确的ContentProvider authority
             val uri = Uri.parse("content://$AUTHORITY/raw_sql")
             val cursor = context.contentResolver.query(uri, null, sql, null, null)
 
@@ -41,7 +42,20 @@ object SqlInjectionUtil {
                 "SQL执行成功，无返回结果"
             }
         } catch (e: Exception) {
-            "SQL执行失败: ${e.message}"
+            "SQL执行失败: ${e.message}\n请检查：\n1. ParentManager应用是否已安装\n2. SQL语法是否正确\n3. 表名是否正确"
+        }
+    }
+
+    // 测试数据库连接
+    fun testConnection(context: Context): Boolean {
+        return try {
+            val uri = Uri.parse("content://$AUTHORITY/raw_sql")
+            val cursor = context.contentResolver.query(uri, null, "SELECT 1", null, null)
+            val connected = cursor != null
+            cursor?.close()
+            connected
+        } catch (e: Exception) {
+            false
         }
     }
 }
